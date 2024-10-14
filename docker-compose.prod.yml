@@ -1,0 +1,115 @@
+version: '3.8'
+
+services:
+  mysql:
+    image: mysql:8.0
+    environment:
+      - MYSQL_DATABASE=db_sailormade_prod
+      - MYSQL_ROOT_PASSWORD=Prod.Tellink@AWS-MySQL
+    ports:
+      - 3307:3306
+    container_name: sailor-mysql
+    restart: always
+    healthcheck:
+      test: [
+        "CMD-SHELL", 
+        'mysql 
+        --database=db_sailormade_prod 
+        --password=Prod.Tellink@AWS-MySQL 
+        --execute="SELECT count(table_name) > 0 FROM information_schema.tables;" 
+        --skip-column-names -B']
+      interval: 30s
+      timeout: 10s
+      retries: 4
+    volumes:
+      - db_volume:/data/db
+    networks:
+      - sailornet
+    # command: npm run migration:dev-linux && npm run dev-linux
+
+
+  redis:
+    image: redis:latest
+    ports:
+      - 6378:6379
+    container_name: sailor-redis
+    volumes:
+      - redis:/data/db
+    networks:
+      - sailornet
+
+  
+  backend:
+    build: 
+      context: ./sailor-made-back
+      dockerfile: Dockerfile.prod
+    container_name: sailormade-api
+    environment:
+      - DB_HOST=mysql
+      - DB_PORT=3306
+      - DB_PASSWORD=Prod.Tellink@AWS-MySQL
+      - DB_DATABASE=db_sailormade_prod
+      - SERVER_PORT=8081
+      - SERVER_POR_SSL=8443
+      - MONGO_HOST=mongo
+      - MONGO_PORT=27017
+      - MONGO_PASSWORD=Prod.Tellink@AWS-MongoDB
+      - MONGO_USERNAME=root
+    depends_on:
+      mysql:
+        condition: service_healthy
+    volumes:
+      - server_volume:/data/db
+    ports:
+      - 8081:8081
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "http://localhost:8081", "||", "exit", "1"]
+      interval: 20s
+      retries: 10
+      timeout: 10s
+    networks:
+      - sailornet
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+
+  webapp:
+    build: 
+      context: ./sailor-made-web
+    container_name: sailormade-webapp 
+    depends_on:
+      - backend
+    ports:
+      - 80:80
+    networks:
+      - sailornet
+
+
+  mongo:
+    image: mongo
+    ports:
+      - 27018:27017
+    # environment:
+      # - MONGO_INITDB_ROOT_PASSWORD=Prod.Tellink@AWS-MongoDB
+      # - MONGO_INITDB_ROOT_USERNAME=root
+    container_name: sailormade-mongo
+    networks:
+      - sailornet
+    volumes:
+      - mongo_volume:/data/db
+
+volumes:
+  db_volume:
+    driver: local
+  server_volume:
+    driver: local
+  mongo_volume:
+    driver: local
+  redis:
+    driver: local
+
+networks:
+  sailornet:
